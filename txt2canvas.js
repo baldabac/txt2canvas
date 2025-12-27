@@ -2,14 +2,6 @@
 
 var txt2canvas = {};
 
-txt2canvas.defaultConfig = {
-  canvasElementName: "txt2canvas-canvas",
-  minimumTextLength: 100,
-  readWordsPerMinute: 300,
-  padding: 40,
-  fontHeight: 20,
-};
-
 // set the canvas to mimic a fullscreen movie story
 txt2canvas.setCanvas = () => {
   // remove old canvas in the case of repeated JS edit, copy, paste, console run
@@ -52,6 +44,10 @@ txt2canvas.getTexts = () =>
   document
     .getElementsByTagName("body")[0]
     .innerText.split("\n")
+    .join(".")
+    .replace("   ", " ")
+    .replace("  ", " ")
+    .split(".")
     .map((item) => item.trimStart())
     .map((item) => item.trimEnd())
     .filter((item) => item.length > txt2canvas.config.minimumTextLength);
@@ -172,7 +168,7 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
   return slides;
 };
 
-txt2canvas.startRecording = () => {
+txt2canvas.setupMediaRecorder = (showDownloadCallback) => {
   const canvasNode = document.getElementById(
     txt2canvas.config.canvasElementName
   );
@@ -182,18 +178,31 @@ txt2canvas.startRecording = () => {
   }
 
   const stream = canvasNode.captureStream();
-  const mediaRecorder = new MediaRecorder(stream);
+  txt2canvas.mediaRecorder = new MediaRecorder(stream);
+
   const chunks = [];
-
-  mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-  mediaRecorder.onstop = (e) => {
-    txt2canvas.showRecordingDownloadLink(
-      new Blob(chunks, { type: "video/webm" })
-    );
+  txt2canvas.mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+  txt2canvas.mediaRecorder.onstop = () => {
+    showDownloadCallback(new Blob(chunks, { type: "video/webm" }));
   };
+};
 
-  mediaRecorder.start();
-  return mediaRecorder;
+txt2canvas.startRecording = () => {
+  if (txt2canvas.mediaRecorder === undefined) {
+    console.error("Media recorder has not been set up as expected");
+    return;
+  }
+
+  txt2canvas.mediaRecorder.start();
+};
+
+txt2canvas.stopRecording = () => {
+  if (txt2canvas.mediaRecorder === undefined) {
+    console.error("Media recorder has not been set up as expected");
+    return;
+  }
+
+  setTimeout(() => txt2canvas.mediaRecorder.stop(), 100);
 };
 
 txt2canvas.showRecordingDownloadLink = (blob) => {
@@ -245,11 +254,7 @@ txt2canvas.showRecordingDownloadLink = (blob) => {
 };
 
 // play an array of slides
-txt2canvas.playSlides = async (
-  slides = [],
-  mediaRecorder,
-  fadeMiliseconds = 1000
-) => {
+txt2canvas.playSlides = (slides = [], fadeMiliseconds = 1000) => {
   const canvasNode = document.getElementById(
     txt2canvas.config.canvasElementName
   );
@@ -257,6 +262,11 @@ txt2canvas.playSlides = async (
     console.error("Canvas node does not exist as expected");
     return;
   }
+
+  // emit txt2canvasEventPlaySlidesStarted
+  document.dispatchEvent(
+    new CustomEvent(txt2canvas.config.txt2canvasEventPlaySlidesStarted)
+  );
 
   const maxLinesPerSlide = txt2canvas.getMaxLinesPerSlide(
     canvasNode.height,
@@ -270,25 +280,11 @@ txt2canvas.playSlides = async (
     fadeOutOpacity = 100,
     fadeStep = fadeMiliseconds / 100;
 
+  // the first slide's frame always starts with opacity 0
+  context.globalAlpha = 0.0;
+
   // prepare the callback for requestAnimationFrame() to display slides on canvas
   const fnRequestAnimationFrame = () => {
-    // recursion exit condition
-    if (slides[i] === undefined) {
-      // clear the canvas after the final slide
-      context.clearRect(0, 0, canvasNode.width, canvasNode.height);
-      // stop the media recorder
-      setTimeout(() => mediaRecorder.stop(), 100);
-      return;
-    }
-
-    // the first slide always starts with opacity 0
-    if (i === 0 && fadeInOpacity === 0 && fadeOutOpacity === 100) {
-      context.globalAlpha = 0.0;
-    }
-
-    //console.log('fadeInOpacity=',fadeInOpacity)
-    //console.log('fadeOutOpacity=',fadeOutOpacity)
-
     // clear canvas canvas
     context.clearRect(0, 0, canvasNode.width, canvasNode.height);
 
@@ -312,49 +308,55 @@ txt2canvas.playSlides = async (
       context.fillText(slides[i].lines[j], lineXPos, lineYPos);
     }
 
-    // determine and set the slide's opacity conditionally
-    // determine and set the requestAnimationFrameTimeout conditionally
-    let requestAnimationFrameTimeout = 0;
-    if (fadeInOpacity === 0) {
-      // fade in just started
-      context.globalAlpha = 0.0;
-      fadeInOpacity += fadeStep;
-      requestAnimationFrameTimeout = fadeStep * 10;
-    } else if (fadeInOpacity > 0 && fadeInOpacity < 100) {
-      // fade in is in progress
+    // determine and set the current frame's currentFrameDuration
+    // and the next frame's opacity conditionally
+    let currentFrameDuration = 0;
+    if (fadeInOpacity >= 0 && fadeInOpacity < 100) {
+      // fade in is in progress: adjust the fadeInOpacity
       context.globalAlpha = fadeInOpacity / 100;
       fadeInOpacity += fadeStep;
-      requestAnimationFrameTimeout = fadeStep * 10;
+      currentFrameDuration = fadeStep * 10;
     } else if (fadeInOpacity === 100 && fadeOutOpacity === 100) {
-      // fade in finished
+      // fade in finished: keep the slide displayed for slides[i].duration miliseconds
       context.globalAlpha = 1.0;
       fadeOutOpacity -= fadeStep;
-      requestAnimationFrameTimeout = slides[i].duration;
+      currentFrameDuration = slides[i].duration;
     } else if (fadeOutOpacity < 100 && fadeOutOpacity > 0) {
-      // fade out is in progress
-      // fade out started and not yet finished
+      // fade out is in progress: adjust the fadeOutOpacity
       context.globalAlpha = fadeOutOpacity / 100;
       fadeOutOpacity -= fadeStep;
-      requestAnimationFrameTimeout = fadeStep * 10;
+      currentFrameDuration = fadeStep * 10;
     } else if (fadeOutOpacity === 0) {
-      // fade out finished
+      // fade out finished: reset variables
       context.globalAlpha = 0.0;
       fadeInOpacity = 0;
       fadeOutOpacity = 100;
-      requestAnimationFrameTimeout = fadeStep * 10;
+      currentFrameDuration = fadeStep * 10;
+
+      // after the last slide: clear the canvas, notify subscribers and exit the recursion
+      if (i === slides.length - 1) {
+        // clear the canvas after the final slide
+        context.clearRect(0, 0, canvasNode.width, canvasNode.height);
+
+        // emit txt2canvasEventPlaySlidesFinished
+        document.dispatchEvent(
+          new CustomEvent(txt2canvas.config.txt2canvasEventPlaySlidesFinished)
+        );
+
+        return;
+      }
 
       // move to next slide only when fadeOutOpacity reaches 0
       i++;
     }
 
-    //console.log('requestAnimationFrameTimeout=',requestAnimationFrameTimeout)
-
-    // wait requestAnimationFrameTimeout miliseconds before going to the next animation frame of a slide
+    // wait currentFrameDuration miliseconds before going to the next animation frame of a slide
     setTimeout(() => {
       requestAnimationFrame(fnRequestAnimationFrame);
-    }, requestAnimationFrameTimeout);
+    }, currentFrameDuration);
   };
 
+  // start the animation
   requestAnimationFrame(fnRequestAnimationFrame);
 };
 
@@ -365,23 +367,42 @@ txt2canvas.getMaxLinesPerSlide = (canvasHeight) => {
   );
 };
 
-txt2canvas.run = () => {
+txt2canvas.run = (customConfig = {}) => {
+  // create the txt2canvas.config using default config and run's customConfig (if provided)
   txt2canvas.config = {
     ...txt2canvas.defaultConfig,
-    ...(txt2canvas.config || {}),
+    ...(customConfig || {}),
   };
 
-  txt2canvas.setCanvas();
   const texts = txt2canvas.getTexts();
+  console.log(texts);
+
+  txt2canvas.setCanvas();
   const slides = txt2canvas.transformTextsIntoSlides(texts);
 
-  const mediaRecorder = txt2canvas.startRecording();
+  // enable canvas recording using custom events emitted by txt2canvas.playSlides()
+  txt2canvas.setupMediaRecorder(txt2canvas.showRecordingDownloadLink);
+  document.addEventListener(
+    txt2canvas.config.txt2canvasEventPlaySlidesStarted,
+    txt2canvas.startRecording
+  );
+  document.addEventListener(
+    txt2canvas.config.txt2canvasEventPlaySlidesFinished,
+    txt2canvas.stopRecording
+  );
 
-  txt2canvas.playSlides(slides, mediaRecorder);
+  // play the slides
+  txt2canvas.playSlides(slides);
 };
 
-// txt2canvas.config = {
-//   fontHeight: 10
-// };
+txt2canvas.defaultConfig = {
+  canvasElementName: "txt2canvas-canvas",
+  minimumTextLength: 3,
+  readWordsPerMinute: 300,
+  padding: 40,
+  fontHeight: 20,
+  txt2canvasEventPlaySlidesStarted: "txt2canvasEventPlaySlidesStarted",
+  txt2canvasEventPlaySlidesFinished: "txt2canvasEventPlaySlidesFinished",
+};
 
 txt2canvas.run();
