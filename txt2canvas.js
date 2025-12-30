@@ -77,25 +77,25 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
   context.textBaseline = "top";
 
   // test with an extra long text right on the first text/slides
-    texts[0] +=
-      " --- extra long text test with duplicated content: " +
-      texts[0] +
-      " " +
-      texts[0] +
-      " " +
-      texts[0] +
-      " " +
-      texts[0] +
-      " " +
-      texts[0] +
-      " " +
-      texts[0] +
-      " " +
-      texts[0] +
-      " " +
-      texts[0] +
-      " " +
-      texts[0];
+    // texts[0] +=
+    //   " --- extra long text test with duplicated content: " +
+    //   texts[0] +
+    //   " " +
+    //   texts[0] +
+    //   " " +
+    //   texts[0] +
+    //   " " +
+    //   texts[0] +
+    //   " " +
+    //   texts[0] +
+    //   " " +
+    //   texts[0] +
+    //   " " +
+    //   texts[0] +
+    //   " " +
+    //   texts[0] +
+    //   " " +
+    //   texts[0];
 
   for (i = 0; i < texts.length; i++) {
     const maxLineWidth = canvasNode.width;
