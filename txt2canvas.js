@@ -44,10 +44,10 @@ txt2canvas.getTexts = () =>
   document
     .getElementsByTagName("body")[0]
     .innerText.split("\n")
-    .join(".")
+    .join(". ")
     .replace("   ", " ")
     .replace("  ", " ")
-    .split(".")
+    .split(". ")
     .map((item) => item.trimStart())
     .map((item) => item.trimEnd())
     .filter((item) => item.length > txt2canvas.config.minimumTextLength);
@@ -77,25 +77,25 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
   context.textBaseline = "top";
 
   // test with an extra long text right on the first text/slides
-  //   texts[0] +=
-  //     " --- extra long text test with duplicated content: " +
-  //     texts[0] +
-  //     " " +
-  //     texts[0] +
-  //     " " +
-  //     texts[0] +
-  //     " " +
-  //     texts[0] +
-  //     " " +
-  //     texts[0] +
-  //     " " +
-  //     texts[0] +
-  //     " " +
-  //     texts[0] +
-  //     " " +
-  //     texts[0] +
-  //     " " +
-  //     texts[0];
+    texts[0] +=
+      " --- extra long text test with duplicated content: " +
+      texts[0] +
+      " " +
+      texts[0] +
+      " " +
+      texts[0] +
+      " " +
+      texts[0] +
+      " " +
+      texts[0] +
+      " " +
+      texts[0] +
+      " " +
+      texts[0] +
+      " " +
+      texts[0] +
+      " " +
+      texts[0];
 
   for (i = 0; i < texts.length; i++) {
     const maxLineWidth = canvasNode.width;
@@ -148,7 +148,7 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
         l++
       ) {
         if (textLines[l] === undefined) break; //non-existent line
-        // old fillText
+        
         slideLines.push(textLines[l]);
         slideWordsLength += textLines[l].split(" ").length;
       }
@@ -156,12 +156,10 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
       slideDurationMiliseconds =
         (60 * 1000 * slideWordsLength) / txt2canvas.config.readWordsPerMinute;
 
-      const slide = {
+      slides.push({
         lines: slideLines,
         duration: slideDurationMiliseconds,
-      };
-
-      slides.push(slide);
+      });
     }
   }
 
@@ -253,8 +251,7 @@ txt2canvas.showRecordingDownloadLink = (blob) => {
   videoWrapperNode.appendChild(downloadLink);
 };
 
-// play an array of slides
-txt2canvas.playSlides = (slides = [], fadeMiliseconds = 1000) => {
+txt2canvas.playSlides = async (slides = [], fadeMiliseconds = 1000) => {
   const canvasNode = document.getElementById(
     txt2canvas.config.canvasElementName
   );
@@ -263,10 +260,90 @@ txt2canvas.playSlides = (slides = [], fadeMiliseconds = 1000) => {
     return;
   }
 
+  let i,
+    fadeOpacity = 0,
+    fadeStep = fadeMiliseconds / 100,
+    outerFadeResolver,
+    currentSlide;
+
+  // a single slide fading callback that animates both fade in and fade out continuously
+  const animateSlideFadePendulum = () => {
+    txt2canvas.drawSlideLines(fadeOpacity / 100, currentSlide);
+
+    // depending on the sign (+ or -) of fadeStep here it will either increment or decrement
+    fadeOpacity += fadeStep;
+
+    // when reaching the end of fade (in or out)
+    if (
+      (fadeStep > 0 && fadeOpacity > 100) ||
+      (fadeStep < 0 && fadeOpacity < 0)
+    ) {
+      // prepare for the next reverse fade (fade in, fade out, fade in, fade out..)
+      fadeStep = -fadeStep;
+
+      // call the wrapping promise's resolver so that await can finish
+      if (outerFadeResolver !== undefined) {
+        outerFadeResolver();
+      }
+
+      // exit recursion after the end of fading
+      return;
+    }
+
+    // keep displaying the current frame before going to next frame recursively
+    const fadeStepDuration = Math.abs(fadeStep * 10);
+    setTimeout(
+      () => requestAnimationFrame(animateSlideFadePendulum),
+      fadeStepDuration
+    );
+  };
+
   // emit txt2canvasEventPlaySlidesStarted
   document.dispatchEvent(
     new CustomEvent(txt2canvas.config.txt2canvasEventPlaySlidesStarted)
   );
+
+  for (i = 0; i < slides.length; i++) {
+    currentSlide = slides[i];
+
+    await new Promise((innerFadeResolver) => {
+      outerFadeResolver = innerFadeResolver;
+      requestAnimationFrame(animateSlideFadePendulum);
+    });
+
+    await new Promise((resolve) =>
+      setTimeout(() => {
+        resolve();
+      }, currentSlide.duration)
+    );
+
+    await new Promise((innerFadeResolver) => {
+      outerFadeResolver = innerFadeResolver;
+      requestAnimationFrame(animateSlideFadePendulum);
+    });
+  }
+
+  // clear the canvas after the final slide
+  canvasNode
+    .getContext("2d")
+    .clearRect(0, 0, canvasNode.width, canvasNode.height);
+
+  // emit txt2canvasEventPlaySlidesFinished
+  document.dispatchEvent(
+    new CustomEvent(txt2canvas.config.txt2canvasEventPlaySlidesFinished)
+  );
+};
+
+txt2canvas.drawSlideLines = (alpha, slide) => {
+  const canvasNode = document.getElementById(
+    txt2canvas.config.canvasElementName
+  );
+  if (canvasNode === null) {
+    console.error("Canvas node does not exist as expected");
+    return;
+  }
+
+  const context = canvasNode.getContext("2d");
 
   const maxLinesPerSlide = txt2canvas.getMaxLinesPerSlide(
     canvasNode.height,
@@ -274,90 +351,24 @@ txt2canvas.playSlides = (slides = [], fadeMiliseconds = 1000) => {
     txt2canvas.config.padding
   );
 
-  const context = canvasNode.getContext("2d");
-  let i = 0, // slide iterator
-    fadeInOpacity = 0,
-    fadeOutOpacity = 100,
-    fadeStep = fadeMiliseconds / 100;
+  // clear canvas canvas
+  context.clearRect(0, 0, canvasNode.width, canvasNode.height);
 
-  // the first slide's frame always starts with opacity 0
-  context.globalAlpha = 0.0;
+  context.globalAlpha = alpha;
 
-  // prepare the callback for requestAnimationFrame() to display slides on canvas
-  const fnRequestAnimationFrame = () => {
-    // clear canvas canvas
-    context.clearRect(0, 0, canvasNode.width, canvasNode.height);
-
-    // visually follow slide number (for debugging)
-    //context.fillText('Slide ' + i + ' of ' + (slides.length - 1) + ': ', 0, 0);
-
-    // draw the slide lines
-    const betweenLinesDistance = Math.floor(txt2canvas.config.padding / 2);
-    let verticalAlignMiddleOffset =
-      (txt2canvas.config.fontHeight + betweenLinesDistance) *
-        Math.max(
-          0,
-          Math.floor((maxLinesPerSlide - slides[i].lines.length) / 2)
-        ) +
-      betweenLinesDistance;
-    let lineXPos = txt2canvas.config.padding;
-    for (let j = 0; j < slides[i].lines.length; j++) {
-      let lineYPos =
-        verticalAlignMiddleOffset +
-        j * (txt2canvas.config.fontHeight + betweenLinesDistance);
-      context.fillText(slides[i].lines[j], lineXPos, lineYPos);
-    }
-
-    // determine and set the current frame's currentFrameDuration
-    // and the next frame's opacity conditionally
-    let currentFrameDuration = 0;
-    if (fadeInOpacity >= 0 && fadeInOpacity < 100) {
-      // fade in is in progress: adjust the fadeInOpacity
-      context.globalAlpha = fadeInOpacity / 100;
-      fadeInOpacity += fadeStep;
-      currentFrameDuration = fadeStep * 10;
-    } else if (fadeInOpacity === 100 && fadeOutOpacity === 100) {
-      // fade in finished: keep the slide displayed for slides[i].duration miliseconds
-      context.globalAlpha = 1.0;
-      fadeOutOpacity -= fadeStep;
-      currentFrameDuration = slides[i].duration;
-    } else if (fadeOutOpacity < 100 && fadeOutOpacity > 0) {
-      // fade out is in progress: adjust the fadeOutOpacity
-      context.globalAlpha = fadeOutOpacity / 100;
-      fadeOutOpacity -= fadeStep;
-      currentFrameDuration = fadeStep * 10;
-    } else if (fadeOutOpacity === 0) {
-      // fade out finished: reset variables
-      context.globalAlpha = 0.0;
-      fadeInOpacity = 0;
-      fadeOutOpacity = 100;
-      currentFrameDuration = fadeStep * 10;
-
-      // after the last slide: clear the canvas, notify subscribers and exit the recursion
-      if (i === slides.length - 1) {
-        // clear the canvas after the final slide
-        context.clearRect(0, 0, canvasNode.width, canvasNode.height);
-
-        // emit txt2canvasEventPlaySlidesFinished
-        document.dispatchEvent(
-          new CustomEvent(txt2canvas.config.txt2canvasEventPlaySlidesFinished)
-        );
-
-        return;
-      }
-
-      // move to next slide only when fadeOutOpacity reaches 0
-      i++;
-    }
-
-    // wait currentFrameDuration miliseconds before going to the next animation frame of a slide
-    setTimeout(() => {
-      requestAnimationFrame(fnRequestAnimationFrame);
-    }, currentFrameDuration);
-  };
-
-  // start the animation
-  requestAnimationFrame(fnRequestAnimationFrame);
+  // draw the slide lines
+  const betweenLinesDistance = Math.floor(txt2canvas.config.padding / 2);
+  let verticalAlignMiddleOffset =
+    (txt2canvas.config.fontHeight + betweenLinesDistance) *
+      Math.max(0, Math.floor((maxLinesPerSlide - slide.lines.length) / 2)) +
+    betweenLinesDistance;
+  let lineXPos = txt2canvas.config.padding;
+  for (let j = 0; j < slide.lines.length; j++) {
+    let lineYPos =
+      verticalAlignMiddleOffset +
+      j * (txt2canvas.config.fontHeight + betweenLinesDistance);
+    context.fillText(slide.lines[j], lineXPos, lineYPos);
+  }
 };
 
 txt2canvas.getMaxLinesPerSlide = (canvasHeight) => {
@@ -375,7 +386,7 @@ txt2canvas.run = (customConfig = {}) => {
   };
 
   const texts = txt2canvas.getTexts();
-  console.log(texts);
+  // console.log(texts);
 
   txt2canvas.setCanvas();
   const slides = txt2canvas.transformTextsIntoSlides(texts);
