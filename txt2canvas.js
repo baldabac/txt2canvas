@@ -63,7 +63,7 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
 
   const context = canvasNode.getContext("2d");
 
-  let i, j, k, l;
+  let i, j, k, l, fitLineFound, fitSyllableFound;
   const slides = [];
   const maxLinesPerSlide = txt2canvas.getMaxLinesPerSlide(
     canvasNode.height,
@@ -77,25 +77,28 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
   context.textBaseline = "top";
 
   // test with an extra long text right on the first text/slides
-    // texts[0] +=
-    //   " --- extra long text test with duplicated content: " +
-    //   texts[0] +
-    //   " " +
-    //   texts[0] +
-    //   " " +
-    //   texts[0] +
-    //   " " +
-    //   texts[0] +
-    //   " " +
-    //   texts[0] +
-    //   " " +
-    //   texts[0] +
-    //   " " +
-    //   texts[0] +
-    //   " " +
-    //   texts[0] +
-    //   " " +
-    //   texts[0];
+  // texts[0] +=
+  //   " --- extra long text test with duplicated content: " +
+  //   texts[0] +
+  //   " " +
+  //   texts[0] +
+  //   " " +
+  //   texts[0] +
+  //   " " +
+  //   texts[0] +
+  //   " " +
+  //   texts[0] +
+  //   " " +
+  //   texts[0] +
+  //   " " +
+  //   texts[0] +
+  //   " " +
+  //   texts[0] +
+  //   " " +
+  //   texts[0];
+
+  // test with some extra long words somewhere
+  // texts[1] = "1:abcdefghijklmnopqrstuvwxyz2:abcdefghijklmnopqrstuvwxyz3:abcdefghijklmnopqrstuvwxyz " + texts[1] + ' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
   for (i = 0; i < texts.length; i++) {
     const maxLineWidth = canvasNode.width;
@@ -105,10 +108,15 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
     const textLines = [];
 
     // split text[i] into lines this way:
-    // remove words one by one until partial text fits the max line width
-    // then place everything left in a remaining text holder
+    // starting from the end start removing words one by one until partial text fits
+    // the max line width then place everything left in a remaining text holder
     // until no more remaining words
     do {
+      // attempt to find a fit line from the beginning to the end
+      // attempt to find a fit line from the beginning to penultimate word
+      // attempt to find a fit line from the beginning to ante-penultimate wor
+      // ... and so on
+      fitLineFound = false;
       for (j = remainingTextWords.length - 1; j >= 0; j--) {
         const potentialLineWordsText = remainingTextWords
           .slice(0, j + 1)
@@ -123,10 +131,61 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
           // we found a line that fits on the screen width
           textLines.push(potentialLineWordsText);
           remainingTextWords = remainingTextWords.slice(j + 1);
+          fitLineFound = true;
           break;
         }
+      } // end looping through remainingTextWords to find a fit line
+
+      //console.log("remainingTextWords=", remainingTextWords);
+
+      // treat the edge case that at the beginning OF THE REMAINING TEXT (and anywhere in the array of words)
+      // there is at least one very long word that does not fit even a single line: find them and break them
+      // in something similar to syllabes starting from the end of the long words and removing
+      // letters one by one until a fit line is found
+
+      if (fitLineFound === false) {
+        // attempt to split into syllables the FIRST big word in the remaining text due to which no fit line can be found
+        // console.log('attempt to split into syllables the FIRST big word in the remaining text due to which no fit line can be found')
+
+        const firstWord = remainingTextWords.shift();
+        //console.log('firstWord=', firstWord)
+
+        fitSyllableFound = false;
+        for (j = firstWord.length - 1 - 1; j > 0; j--) {
+          const potentialSyllable =
+            firstWord
+              .split("")
+              .slice(0, j + 1)
+              .join("") + "-";
+          const potentialSyllableMeasuredWidth =
+            context.measureText(potentialSyllable).width;
+          if (
+            potentialSyllableMeasuredWidth <
+            maxLineWidth - txt2canvas.config.padding * 2
+          ) {
+            // we found a "syllable-" that fits on the screen width
+            // console.log('we found a "syllable-" that fits on the screen width')
+            // console.log('potentialSyllable=', potentialSyllable);
+
+            fitSyllableFound = true;
+            const firstSyllable = potentialSyllable; //firstWord.slice(0, j + 1) + '-';
+            const remainingSyllables = "-" + firstWord.slice(j + 1);
+
+            remainingTextWords.unshift(remainingSyllables);
+            remainingTextWords.unshift(firstSyllable);
+            break;
+          }
+        } // end looping through first word letters
+
+        if (fitSyllableFound === false) {
+          // no fit line found, no fit syllable found: the screen width must not fit
+          // even a single character given the padding and fontSize
+          console.error(
+            "screen width is too small to fit any character given current padding and fontSize"
+          );
+          break; //break the forever loop
+        }
       }
-      //console.log('remainingTextWords=',remainingTextWords);
     } while (remainingTextWords.length > 0);
 
     // for very long texts the number of lines will not fit a single screen
@@ -148,7 +207,7 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
         l++
       ) {
         if (textLines[l] === undefined) break; //non-existent line
-        
+
         slideLines.push(textLines[l]);
         slideWordsLength += textLines[l].split(" ").length;
       }
