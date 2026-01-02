@@ -24,7 +24,7 @@ txt2canvas.setCanvas = () => {
   canvas.style.height = "100vh";
   canvas.style.display = "block";
   canvas.style.zIndex = "2147483648";
-  canvas.style.background = "#000";
+  canvas.style.background = "#fff";
   document.getElementsByTagName("body")[0].appendChild(canvas);
   const newlyCreatedCanvasNode = document.getElementById(
     txt2canvas.config.canvasElementName
@@ -73,7 +73,6 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
 
   context.font = txt2canvas.config.fontHeight + "px courier";
   context.textAlign = "left";
-  context.fillStyle = "white";
   context.textBaseline = "top";
 
   // test with an extra long text right on the first text/slides
@@ -138,53 +137,55 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
 
       //console.log("remainingTextWords=", remainingTextWords);
 
+      if (fitLineFound === true) {
+        continue;
+      }
+
       // treat the edge case that at the beginning OF THE REMAINING TEXT (and anywhere in the array of words)
       // there is at least one very long word that does not fit even a single line: find them and break them
       // in something similar to syllabes starting from the end of the long words and removing
       // letters one by one until a fit line is found
+      
+      // attempt to split into syllables the FIRST big word in the remaining text due to which no fit line can be found
+      // console.log('attempt to split into syllables the FIRST big word in the remaining text due to which no fit line can be found')
 
-      if (fitLineFound === false) {
-        // attempt to split into syllables the FIRST big word in the remaining text due to which no fit line can be found
-        // console.log('attempt to split into syllables the FIRST big word in the remaining text due to which no fit line can be found')
+      const firstWord = remainingTextWords.shift();
+      //console.log('firstWord=', firstWord)
 
-        const firstWord = remainingTextWords.shift();
-        //console.log('firstWord=', firstWord)
+      fitSyllableFound = false;
+      for (j = firstWord.length - 1 - 1; j > 0; j--) {
+        const potentialSyllable =
+          firstWord
+            .split("")
+            .slice(0, j + 1)
+            .join("") + "-";
+        const potentialSyllableMeasuredWidth =
+          context.measureText(potentialSyllable).width;
+        if (
+          potentialSyllableMeasuredWidth <
+          maxLineWidth - txt2canvas.config.padding * 2
+        ) {
+          // we found a "syllable-" that fits on the screen width
+          // console.log('we found a "syllable-" that fits on the screen width')
+          // console.log('potentialSyllable=', potentialSyllable);
 
-        fitSyllableFound = false;
-        for (j = firstWord.length - 1 - 1; j > 0; j--) {
-          const potentialSyllable =
-            firstWord
-              .split("")
-              .slice(0, j + 1)
-              .join("") + "-";
-          const potentialSyllableMeasuredWidth =
-            context.measureText(potentialSyllable).width;
-          if (
-            potentialSyllableMeasuredWidth <
-            maxLineWidth - txt2canvas.config.padding * 2
-          ) {
-            // we found a "syllable-" that fits on the screen width
-            // console.log('we found a "syllable-" that fits on the screen width')
-            // console.log('potentialSyllable=', potentialSyllable);
+          fitSyllableFound = true;
+          const firstSyllable = potentialSyllable; //firstWord.slice(0, j + 1) + '-';
+          const remainingSyllables = "-" + firstWord.slice(j + 1);
 
-            fitSyllableFound = true;
-            const firstSyllable = potentialSyllable; //firstWord.slice(0, j + 1) + '-';
-            const remainingSyllables = "-" + firstWord.slice(j + 1);
-
-            remainingTextWords.unshift(remainingSyllables);
-            remainingTextWords.unshift(firstSyllable);
-            break;
-          }
-        } // end looping through first word letters
-
-        if (fitSyllableFound === false) {
-          // no fit line found, no fit syllable found: the screen width must not fit
-          // even a single character given the padding and fontSize
-          console.error(
-            "screen width is too small to fit any character given current padding and fontSize"
-          );
-          break; //break the forever loop
+          remainingTextWords.unshift(remainingSyllables);
+          remainingTextWords.unshift(firstSyllable);
+          break;
         }
+      } // end looping through first word letters
+
+      if (fitSyllableFound === false) {
+        // no fit line found, no fit syllable found: the screen width must not fit
+        // even a single character given the padding and fontSize
+        console.error(
+          "screen width is too small to fit any character given current padding and fontSize"
+        );
+        break; //break the forever loop
       }
     } while (remainingTextWords.length > 0);
 
@@ -286,7 +287,7 @@ txt2canvas.showRecordingDownloadLink = (blob) => {
   videoWrapperNode.style.height = "100%";
   videoWrapperNode.style.display = "table";
   videoWrapperNode.style.zIndex = "2147483649";
-  videoWrapperNode.style.background = "#000";
+  videoWrapperNode.style.background = "#fff";
   videoWrapperNode.style.textAlign = "center";
   document.getElementsByTagName("body")[0].appendChild(videoWrapperNode);
 
@@ -301,7 +302,7 @@ txt2canvas.showRecordingDownloadLink = (blob) => {
   // create the download link node
   const downloadLink = document.createElement("a");
   downloadLink.textContent = "Download as .webm video";
-  downloadLink.style.color = "#fff";
+  downloadLink.style.color = "#000";
   downloadLink.style.verticalAlign = "middle";
   downloadLink.style.display = "table-cell";
   downloadLink.href = videoNode.src;
@@ -413,7 +414,9 @@ txt2canvas.drawSlideLines = (alpha, slide) => {
   // clear canvas canvas
   context.clearRect(0, 0, canvasNode.width, canvasNode.height);
 
-  context.globalAlpha = alpha;
+  context.rect(0, 0, canvasNode.width, canvasNode.height)
+  context.fillStyle = "#fff"
+  context.fill()
 
   // draw the slide lines
   const betweenLinesDistance = Math.floor(txt2canvas.config.padding / 2);
@@ -426,6 +429,7 @@ txt2canvas.drawSlideLines = (alpha, slide) => {
     let lineYPos =
       verticalAlignMiddleOffset +
       j * (txt2canvas.config.fontHeight + betweenLinesDistance);
+    context.fillStyle = "rgb(0, 0, 0, " + alpha + ")";
     context.fillText(slide.lines[j], lineXPos, lineYPos);
   }
 };
