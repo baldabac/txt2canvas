@@ -8,6 +8,7 @@ txt2canvas.setCanvas = () => {
   const oldCanvas = document.getElementById(
     txt2canvas.config.canvasElementName
   );
+
   if (oldCanvas !== null) {
     oldCanvas.remove();
   }
@@ -44,26 +45,26 @@ txt2canvas.getTexts = () =>
   document
     .getElementsByTagName("body")[0]
     .innerText.split("\n")
-    .join(". ")
-    .replace("   ", " ")
-    .replace("  ", " ")
-    .split(". ")
+    .join(". ") // join visible texts from innerText as if they were sentences
+    .replace("   ", " ") // convert multiples of 3 spaces into one
+    .replace("  ", " ") // convert multiples of 2 spaces into one
+    .split(". ") // sentence split
     .map((item) => item.trimStart())
     .map((item) => item.trimEnd())
-    .filter((item) => item.length > txt2canvas.config.minimumTextLength);
+    .filter((item) => item.length > txt2canvas.config.minimumTextLength); // to be able to test with different text sizes
 
 txt2canvas.transformTextsIntoSlides = (texts) => {
   const canvasNode = document.getElementById(
     txt2canvas.config.canvasElementName
   );
+
   if (canvasNode === null) {
     console.error("Canvas node does not exist as expected");
     return;
   }
 
-  const context = canvasNode.getContext("2d");
-
   let i, j, k, l, fitLineFound, fitSyllableFound;
+  const context = canvasNode.getContext("2d");
   const slides = [];
   const maxLinesPerSlide = txt2canvas.getMaxLinesPerSlide(
     canvasNode.height,
@@ -100,11 +101,10 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
   // texts[1] = "1:abcdefghijklmnopqrstuvwxyz2:abcdefghijklmnopqrstuvwxyz3:abcdefghijklmnopqrstuvwxyz " + texts[1] + ' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
   for (i = 0; i < texts.length; i++) {
+    const textLines = [];
     const maxLineWidth = canvasNode.width;
     const fullTextWords = texts[i].split(" ");
     let remainingTextWords = fullTextWords;
-
-    const textLines = [];
 
     // split text[i] into lines this way:
     // starting from the end start removing words one by one until partial text fits
@@ -112,17 +112,18 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
     // until no more remaining words
     do {
       // attempt to find a fit line from the beginning to the end
-      // attempt to find a fit line from the beginning to penultimate word
-      // attempt to find a fit line from the beginning to ante-penultimate wor
-      // ... and so on
+      // attempt to find a fit line from the beginning to the penultimate word
+      // attempt to find a fit line from the beginning to the ante-penultimate word ... and so on
       fitLineFound = false;
       for (j = remainingTextWords.length - 1; j >= 0; j--) {
         const potentialLineWordsText = remainingTextWords
           .slice(0, j + 1)
           .join(" ");
+
         const potentialLineWordsTextMeasuredWidth = context.measureText(
           potentialLineWordsText
         ).width;
+
         if (
           potentialLineWordsTextMeasuredWidth <
           maxLineWidth - txt2canvas.config.padding * 2
@@ -130,12 +131,11 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
           // we found a line that fits on the screen width
           textLines.push(potentialLineWordsText);
           remainingTextWords = remainingTextWords.slice(j + 1);
+
           fitLineFound = true;
           break;
         }
       } // end looping through remainingTextWords to find a fit line
-
-      //console.log("remainingTextWords=", remainingTextWords);
 
       if (fitLineFound === true) {
         continue;
@@ -145,12 +145,9 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
       // there is at least one very long word that does not fit even a single line: find them and break them
       // in something similar to syllabes starting from the end of the long words and removing
       // letters one by one until a fit line is found
-      
       // attempt to split into syllables the FIRST big word in the remaining text due to which no fit line can be found
-      // console.log('attempt to split into syllables the FIRST big word in the remaining text due to which no fit line can be found')
 
       const firstWord = remainingTextWords.shift();
-      //console.log('firstWord=', firstWord)
 
       fitSyllableFound = false;
       for (j = firstWord.length - 1 - 1; j > 0; j--) {
@@ -159,22 +156,23 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
             .split("")
             .slice(0, j + 1)
             .join("") + "-";
+
         const potentialSyllableMeasuredWidth =
           context.measureText(potentialSyllable).width;
+
         if (
           potentialSyllableMeasuredWidth <
           maxLineWidth - txt2canvas.config.padding * 2
         ) {
           // we found a "syllable-" that fits on the screen width
-          // console.log('we found a "syllable-" that fits on the screen width')
-          // console.log('potentialSyllable=', potentialSyllable);
 
-          fitSyllableFound = true;
           const firstSyllable = potentialSyllable; //firstWord.slice(0, j + 1) + '-';
           const remainingSyllables = "-" + firstWord.slice(j + 1);
 
           remainingTextWords.unshift(remainingSyllables);
           remainingTextWords.unshift(firstSyllable);
+
+          fitSyllableFound = true;
           break;
         }
       } // end looping through first word letters
@@ -208,7 +206,6 @@ txt2canvas.transformTextsIntoSlides = (texts) => {
         l++
       ) {
         if (textLines[l] === undefined) break; //non-existent line
-
         slideLines.push(textLines[l]);
         slideWordsLength += textLines[l].split(" ").length;
       }
@@ -230,6 +227,7 @@ txt2canvas.setupMediaRecorder = (showDownloadCallback) => {
   const canvasNode = document.getElementById(
     txt2canvas.config.canvasElementName
   );
+
   if (canvasNode === null) {
     console.error("Canvas node does not exist as expected");
     return;
@@ -243,6 +241,14 @@ txt2canvas.setupMediaRecorder = (showDownloadCallback) => {
   txt2canvas.mediaRecorder.onstop = () => {
     showDownloadCallback(new Blob(chunks, { type: "video/webm" }));
   };
+};
+
+txt2canvas.forceStopMediaRecorder = () => {
+  if (txt2canvas.mediaRecorder === undefined) {
+    return;
+  }
+  txt2canvas.mediaRecorder.onstop = () => {};
+  txt2canvas.mediaRecorder.stop();
 };
 
 txt2canvas.startRecording = () => {
@@ -268,6 +274,7 @@ txt2canvas.showRecordingDownloadLink = (blob) => {
   const oldVideoWrapperNode = document.getElementById(
     txt2canvas.config.canvasElementName + "-video-wrapper"
   );
+
   if (oldVideoWrapperNode !== null) {
     oldVideoWrapperNode.remove();
   }
@@ -315,6 +322,7 @@ txt2canvas.playSlides = async (slides = [], fadeMiliseconds = 1000) => {
   const canvasNode = document.getElementById(
     txt2canvas.config.canvasElementName
   );
+
   if (canvasNode === null) {
     console.error("Canvas node does not exist as expected");
     return;
@@ -398,6 +406,7 @@ txt2canvas.drawSlideLines = (alpha, slide) => {
   const canvasNode = document.getElementById(
     txt2canvas.config.canvasElementName
   );
+
   if (canvasNode === null) {
     console.error("Canvas node does not exist as expected");
     return;
@@ -414,9 +423,9 @@ txt2canvas.drawSlideLines = (alpha, slide) => {
   // clear canvas canvas
   context.clearRect(0, 0, canvasNode.width, canvasNode.height);
 
-  context.rect(0, 0, canvasNode.width, canvasNode.height)
-  context.fillStyle = "#fff"
-  context.fill()
+  context.rect(0, 0, canvasNode.width, canvasNode.height);
+  context.fillStyle = "#fff";
+  context.fill();
 
   // draw the slide lines
   const betweenLinesDistance = Math.floor(txt2canvas.config.padding / 2);
@@ -441,6 +450,20 @@ txt2canvas.getMaxLinesPerSlide = (canvasHeight) => {
   );
 };
 
+txt2canvas.setupWindowResize = () => {
+  // do not show the download link at force-stop
+  txt2canvas.forceStopMediaRecorder();
+
+  // clear existing timeouts of fade and display so that they don't overlap with next run
+  let biggestTimeoutId = window.setTimeout(() => {}, 0);
+  for (let i = 0; i < biggestTimeoutId; i++) {
+    clearTimeout(i);
+  }
+
+  // actual re-run
+  txt2canvas.run();
+};
+
 txt2canvas.run = (customConfig = {}) => {
   // create the txt2canvas.config using default config and run's customConfig (if provided)
   txt2canvas.config = {
@@ -449,7 +472,6 @@ txt2canvas.run = (customConfig = {}) => {
   };
 
   const texts = txt2canvas.getTexts();
-  // console.log(texts);
 
   txt2canvas.setCanvas();
   const slides = txt2canvas.transformTextsIntoSlides(texts);
@@ -465,13 +487,16 @@ txt2canvas.run = (customConfig = {}) => {
     txt2canvas.stopRecording
   );
 
+  // re-run the script when the window is resized
+  window.onresize = txt2canvas.setupWindowResize;
+
   // play the slides
   txt2canvas.playSlides(slides);
 };
 
 txt2canvas.defaultConfig = {
   canvasElementName: "txt2canvas-canvas",
-  minimumTextLength: 3,
+  minimumTextLength: 245,
   readWordsPerMinute: 300,
   padding: 40,
   fontHeight: 20,
