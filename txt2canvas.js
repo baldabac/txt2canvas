@@ -496,7 +496,7 @@ txt2canvas.run = (customConfig = {}) => {
 
 txt2canvas.defaultConfig = {
   canvasElementName: "txt2canvas-canvas",
-  minimumTextLength: 245,
+  minimumTextLength: 1,
   readWordsPerMinute: 300,
   padding: 40,
   fontHeight: 20,
